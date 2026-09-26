@@ -1,0 +1,38 @@
+name: Import Pretty Moves v1.0.0 source
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/import-release.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  import-source:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download exact v1.0.0 release archive
+        run: |
+          curl -L --fail             "https://github.com/LiNK200488/Pretty-Moves/releases/download/v1.0.0/Pretty_Moves_v1.0.0.zip"             -o /tmp/pretty_moves_v1.0.0.zip
+          echo "9cd4e1a78e1eda30ce35a3f3241667153acac6e977d6596917a641238524642b  /tmp/pretty_moves_v1.0.0.zip" | sha256sum -c -
+
+      - name: Expand released source into repository
+        run: |
+          rm -rf /tmp/pretty_moves_source
+          mkdir -p /tmp/pretty_moves_source
+          unzip -q /tmp/pretty_moves_v1.0.0.zip -d /tmp/pretty_moves_source
+          rsync -a             --exclude "README.md"             --exclude "CHANGELOG.md"             /tmp/pretty_moves_source/ ./
+          rm -f .github/workflows/import-release.yml
+
+      - name: Commit v1.0.0 source
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Add Pretty Moves v1.0.0 source"
+          git push
