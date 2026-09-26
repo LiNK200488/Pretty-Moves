@@ -1,0 +1,37 @@
+# Architecture
+
+The mod is split into declarative move definitions and shared runtimes. `moves/*.lua` contains FireRed choreography/resource data only. `move_registry.lua` owns the enabled move set and deduplicates referenced SFX IDs. `visual_runtime.lua` interprets move choreography, `visual_assets.lua` owns shared ROM-derived texture caches, and `battle_bridge.lua` performs the single guarded Gen1Recomp queue integration used by every move.
+
+`precache.lua` is the global first-use-latency layer. During mod load it prepares visual resources for every registered move and compiles the two classic battle orientations. At battle start it asks `native_audio.lua` to validate every registered FireRed SFX key without starting playback. No move definition implements its own caching.
+
+`native_audio.lua` reuses a persistent verified WAV cache when available. On a cache miss it renders each unique FireRed MP2k SFX, generates the required variants, commits the cache only after successful generation, and registers the files before content freeze. Playback uses Gen1Recomp `Sound.playStereo`; first Source creation is left to Gen1Recomp while the persistent WAV cache avoids repeated ROM/M4A work.
+
+`anim_assets.lua` locates FireRed sprite-sheet/palette records with C-backed binary searches (`Rom:findBytes`) rather than byte-walking the 16 MiB ROM in Lua. `visual_assets.lua` then decodes and caches the required OBJ frames globally for all registered moves.
+
+
+### `voxel_compat.lua`
+Shared renderer-neutral compatibility boundary for staged 3D battles. It detects supported voxel renderers only while they actually own a staged battle, then normalizes projected battler anchors, authored anchors, animation scale, point projection and battler-image overlay drawing. Battle Art Voxel Fork is consumed through its public read-only `battleStage` export. PotatoVoxel is consumed through the live `BattleState.dramaticShapeShot` descriptor that Potato itself installs while 3D-BTL is active; no Potato private module is required or mutated. Flat battles return no staged state, so their existing rendering path is untouched. Shared clone, battler-scale and battler-rotation paths use this module rather than renderer-specific branches.
+
+### `apply_fx_bridge.lua`
+Single guarded owner of Gen1Recomp's `battle.applyHitFx` seam. Status and stat-change feedback register ordered consumers instead of stacking independent wrappers. The first FireRed feedback consumer that replaces a native applying-effect row owns that row. For registered FireRed moves, a final move-replacement consumer always swallows any otherwise-unclaimed native hit row, so Gen1Recomp cannot append its original visual/SFX after the FireRed move. Unrelated engine hit rows still pass through unchanged. Teardown restores the original function only while this mod still owns the seam.
+
+### `stat_change_feedback.lua`
+Shared observer and presenter for battle stat-stage changes. It snapshots battler stage tables, records `stat`, signed `delta`, `direction`, and `sharply`, and uses FireRed's shared stat-change SFX 232/238. Before queueing feedback, changes are partitioned by affected battler and signed direction so mixed up/down mutations cannot inherit the first mutation's color or flow. The FireRed stat mask geometry, scroll direction, intensity shading, and sharp-change timing remain shared and ROM-native; the project presentation convention recolors raises shaded green and drops shaded red at the mask shader seam. No individual move definition contains generic stat-feedback logic.
+
+## Optional Poké Ball send-out
+
+`lib/pokeball_entry.lua` is a visual-only send-out bridge. It claims only the host's normal trainer-owned send-out presentation: the player-side `POOF_ANIM` row becomes FireRed's source-timed ball arc (25 translation steps stretched to 43 visible flight frames by the callback's one-third-speed middle segment), and opponent trainer/link send-outs gain the FireRed 16-frame pre-release hold. Wild encounters and special send-out paths that do not expose the normal POOF row are left untouched. The host remains authoritative for switching, cries, HUD timing and grow-in lifetime/queue flow; at the FireRed ball-open callback the bridge seeds only the first visible grow frame and clears the host send-out draw gate so particle 0 and battler emergence share one rendered frame. The later host reveal action takes over without being allowed to rewind that visual progress.
+
+The Poké Ball (tag 55000) and release particles (tag 55020) are decoded from the imported FireRed ROM through the existing `anim_assets.lua` / `visual_assets.lua` cache. The shared battler-palette wrapper supplies the FireRed `RGB(31,22,30)` release fade, and `native_audio.lua` owns `SE_BALL_OPEN` (15). The `pokeball_sendout` option is sampled only when a new send-out is scheduled; disabling it does not mutate battle mechanics.
+
+## Optional Poké Ball capture replacement
+
+`lib/pokeball_capture.lua` listens only to the semantic `battle.ball_thrown` event. Its payload carries the exact ball item plus the engine-resolved `caught`/`shakes` result, so the visual layer never infers ball identity from inventory or from toss animation tier. The event is emitted on the same logic tick as Gen1Recomp's `Ball_Toss` SFX, so the FireRed replacement begins its own player-to-target arc immediately at that seam. The previously approved 12-frame tuning is applied as extra travel time across the stock ItemUseBall beat and native toss-row duration rather than as a dead pre-launch hold. The module reads FireRed ball sheets/palettes 55000-55011 and particle palettes 55020-55031 from the imported ROM. For supported balls it wraps the active AnimPlayer draw seam and suppresses only the native capture-ball sprite rows once the host toss row starts (toss, poof, shake and the final caught-ball hold), then keeps drawing the selected FireRed ball. Gen 1's shake bitmap phases keep a fixed centre, so the replacement reproduces their visible rest / left tilt / rest / right tilt sequence while retaining the host's 40-frame pause per wobble. Gen1Recomp continues to own the catch formula, item consumption, hide/show rows, shake count, success/failure text and battle result. Unsupported custom ball ids deliberately fall through to native visuals.
+
+## Status-condition feedback
+
+`lib/status_conditions.lua` is the single declarative source for FireRed major-status and confusion timing. `lib/status_bridge.lua` observes a landed status, waits for Gen1Recomp's native applying-attack hit-FX seam, suppresses that one native FX call, and runs the FireRed replacement there. Confusion is detected from the volatile `confuseCount` transition because it is not a major-status event. ROM sprite resources share `VisualAssets:prepareDefinition`; status code does not duplicate move asset extraction or audio rendering.
+
+## FireRed battle-space rule
+
+All imported animation geometry is classified before implementation. `lib/battle_space.lua` is the only authority for FireRed-to-Gen1Recomp presentation scaling. FireRed screen/background-space constructs use the shared 240-to-160 conversion; battler-local sprites, OAM sizes, and battler-relative motion stay at native FireRed pixel dimensions unless the original FireRed source explicitly establishes a different transform. Do not add move-specific `2/3` constants or custom substitute artwork.

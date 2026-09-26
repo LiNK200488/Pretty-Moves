@@ -1,0 +1,33 @@
+{
+  "id": "firered_battle_anims",
+  "name": "Pretty Moves",
+  "version": "1.0.0",
+  "api": 2,
+  "entry": "main.lua",
+  "profile": "overhaul",
+  "category": "GRAPHICS",
+  "games": [
+    "red",
+    "blue",
+    "yellow"
+  ],
+  "game_version": ">=0.0.0-dev <2.0.0",
+  "priority": 100,
+  "required_imports": [
+    {
+      "id": "firered_us_v10",
+      "name": "Pokemon FireRed ROM (USA v1.0)",
+      "description": "A legally obtained clean Pokemon FireRed (USA) v1.0 / revision 0 ROM.",
+      "file": "firered.gba",
+      "format": "raw",
+      "size": 16777216,
+      "md5": [
+        "e26ee0d44e809351c8ce2d73c7400cdd"
+      ]
+    }
+  ],
+  "permissions": [
+    "engine_internals"
+  ],
+  "description": "Source-faithful FireRed move, hit, status, stat, Transform and optional Poké Ball battle animations for Pokémon Red, Blue and Yellow."
+}
